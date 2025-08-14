@@ -1,0 +1,88 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv_mac/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+temp/
+logs/*.log
+backups/*.bak
+*.db-journal
+*.db.backup
+
+# Credentials and sensitive data (keep templates only)
+*_credentials.json
+!*_credentials_template.json
+credentials.json
+plex_token.txt
+api_keys.txt
+*.key
+*.pem
+
+# Database files (exclude all database files)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db.backup
+bazarr_sync_tracking.db*
+subsync.db*
+subtitle_sync_history.db*
+
+# Archive files
+archive/processed/
+archive/
+temp/
+backups/
+
+# Config files with sensitive data
+subsync_config.json
+config.json
+.env.*
+*.conf
