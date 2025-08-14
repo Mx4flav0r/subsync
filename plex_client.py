@@ -124,6 +124,11 @@ class PlexSubtitleManager:
             tv_libraries = [lib for lib in searchable_libraries if lib['type'] == 'show']
             movie_libraries = [lib for lib in searchable_libraries if lib['type'] == 'movie']
             
+            # Show which movie libraries we found
+            if movie_libraries:
+                movie_lib_names = [lib['title'] for lib in movie_libraries]
+                print(f"🎬 Movie libraries found: {', '.join(movie_lib_names)}")
+            
             # Search order: TV shows first if series_title provided, then movies
             search_order = tv_libraries + movie_libraries if series_title else searchable_libraries
             

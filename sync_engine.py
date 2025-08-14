@@ -55,7 +55,14 @@ class SyncEngine:
             if hasattr(bazarr, 'core_integration'):
                 bazarr_client = bazarr.core_integration
             
-            self.path_mapper = PathMapper(bazarr_client=bazarr_client)
+            # Pass config to PathMapper for translation settings
+            config_dict = None
+            if hasattr(config, 'settings'):
+                config_dict = config.settings
+            elif hasattr(config, 'get_config'):
+                config_dict = config.get_config()
+            
+            self.path_mapper = PathMapper(bazarr_client=bazarr_client, config=config_dict)
             self.use_pathmapper = True
             print("🔥 Sync engine powered by your PathMapper!")
         else:
@@ -453,6 +460,265 @@ class SyncEngine:
         
         return results
     
+    def process_wanted_items_with_translation(self, language: str = "nl") -> Dict[str, int]:
+        """
+        Process items from Bazarr's wanted list and generate subtitles via translation 🎯
+        
+        This is the main function for automatic subtitle generation. It:
+        1. Fetches items from Bazarr's wanted list (movies + TV episodes)
+        2. Finds local file paths for each item
+        3. Attempts to translate existing subtitles to target language
+        4. Creates new subtitle files when successful
+        
+        Args:
+            language (str): Target language code (default: "nl" for Dutch)
+            
+        Returns:
+            dict: Results containing counts of successful, failed, skipped, and translated items
+                - 'successful': Items processed successfully
+                - 'failed': Items that failed processing
+                - 'skipped': Items that were skipped
+                - 'translated': Items where new subtitles were created via translation
+                
+        Prerequisites:
+            - Bazarr integration must be available
+            - Auto-translation must be enabled in config
+            - PathMapper must be initialized with translation support
+        """
+        print(f"\n🎯 PROCESSING WANTED ITEMS WITH TRANSLATION")
+        print("=" * 60)
+        
+        # Check if we have Bazarr integration
+        if not self.use_pathmapper or not self.path_mapper or not self.path_mapper.bazarr_client:
+            print("❌ Bazarr integration not available")
+            return {"successful": 0, "failed": 0, "skipped": 0}
+        
+        # Check if translation is enabled
+        if not self.path_mapper.config or not self.path_mapper.config.get('auto_translation', False):
+            print("❌ Auto-translation is disabled")
+            print("   Enable it in config: auto_translation = True")
+            return {"successful": 0, "failed": 0, "skipped": 0}
+        
+        # Get wanted items from Bazarr
+        wanted_data = self.path_mapper.bazarr_client.get_all_wanted_items()
+        
+        if wanted_data['total'] == 0:
+            print("🎉 No items need subtitles - everything is up to date!")
+            return {"successful": 0, "failed": 0, "skipped": 0}
+        
+        print(f"📊 Found {wanted_data['total']} items needing subtitles:")
+        print(f"   Movies: {len(wanted_data['movies'])}")
+        print(f"   TV Episodes: {len(wanted_data['series'])}")
+        print()
+        
+        results = {"successful": 0, "failed": 0, "skipped": 0, "translated": 0}
+        session_id = None
+        
+        # Start session tracking
+        if self.path_mapper and hasattr(self.path_mapper, 'start_sync_session'):
+            session_id = self.path_mapper.start_sync_session('wanted_translation', wanted_data['total'])
+        
+        # Process wanted movies
+        for movie in wanted_data['movies']:
+            try:
+                print(f"\n🎬 Processing wanted movie: {movie.get('title', 'Unknown')}")
+                
+                # Try to find the movie file using path mapping
+                movie_path = self._find_movie_path(movie)
+                if not movie_path:
+                    print(f"   ⚠️ Could not find movie file")
+                    results["failed"] += 1
+                    continue
+                
+                # Try to find and translate subtitles
+                translated_path = self._process_wanted_item_translation(movie_path, language)
+                
+                if translated_path:
+                    print(f"   ✅ Created Dutch subtitles via translation")
+                    results["successful"] += 1
+                    results["translated"] += 1
+                else:
+                    print(f"   ❌ Translation failed")
+                    results["failed"] += 1
+                    
+            except Exception as e:
+                print(f"   ❌ Error processing movie: {e}")
+                results["failed"] += 1
+        
+        # Process wanted TV episodes
+        for episode in wanted_data['series']:
+            try:
+                series_title = episode.get('seriesTitle', 'Unknown Series')
+                episode_title = episode.get('episodeTitle', 'Unknown Episode')
+                episode_number = episode.get('episode_number', '?x?')
+                print(f"\n📺 Processing wanted episode: {series_title} {episode_number} - {episode_title}")
+                
+                # Try to find the episode file
+                episode_path = self._find_episode_path(episode)
+                if not episode_path:
+                    print(f"   ⚠️ Could not find episode file")
+                    results["failed"] += 1
+                    continue
+                
+                # Try to find and translate subtitles
+                translated_path = self._process_wanted_item_translation(episode_path, language)
+                
+                if translated_path:
+                    print(f"   ✅ Created Dutch subtitles via translation")
+                    results["successful"] += 1
+                    results["translated"] += 1
+                else:
+                    print(f"   ❌ Translation failed")
+                    results["failed"] += 1
+                    
+            except Exception as e:
+                print(f"   ❌ Error processing episode: {e}")
+                results["failed"] += 1
+        
+        # End session tracking
+        if session_id and self.path_mapper and hasattr(self.path_mapper, 'end_sync_session'):
+            self.path_mapper.end_sync_session(session_id, results["successful"], results["failed"], results["skipped"])
+        
+        print(f"\n📊 WANTED ITEMS PROCESSING COMPLETE")
+        print(f"   ✅ Successfully translated: {results['translated']}")
+        print(f"   ❌ Failed: {results['failed']}")
+        print(f"   ⏭️ Skipped: {results['skipped']}")
+        
+        return results
+    
+    def _find_movie_path(self, movie_data: dict) -> str:
+        """
+        Find the actual file path for a movie from Bazarr data
+        
+        Attempts to locate the movie file using:
+        1. Direct path mapping from Bazarr path data
+        2. Fuzzy search by movie title across all movie directories
+        
+        Args:
+            movie_data (dict): Movie data from Bazarr containing title, path, etc.
+            
+        Returns:
+            str: Full path to movie file if found, None otherwise
+        """
+        try:
+            # Try to get path from Bazarr data
+            if 'path' in movie_data:
+                bazarr_path = movie_data['path']
+                # Use path mapper to convert from Plex path to local path
+                if self.path_mapper:
+                    local_path = self.path_mapper._map_plex_to_local(bazarr_path)
+                    if local_path and os.path.exists(local_path):
+                        return local_path
+            
+            # Fallback: search by title
+            title = movie_data.get('title', '')
+            if title:
+                # Search in all movie directories
+                for base_path in ["/Volumes/Data/Movies", "/Volumes/Data/Cartoons", "/Volumes/Data/Documentaries", "/Volumes/Data/Christmas", "/Volumes/Data/Dive"]:
+                    if os.path.exists(base_path):
+                        for item in os.listdir(base_path):
+                            if title.lower() in item.lower():
+                                movie_dir = os.path.join(base_path, item)
+                                if os.path.isdir(movie_dir):
+                                    # Find video file in directory
+                                    for file in os.listdir(movie_dir):
+                                        if file.endswith(('.mp4', '.mkv', '.avi', '.mov')):
+                                            return os.path.join(movie_dir, file)
+            
+            return None
+            
+        except Exception as e:
+            print(f"   Error finding movie path: {e}")
+            return None
+    
+    def _find_episode_path(self, episode_data: dict) -> str:
+        """
+        Find the actual file path for a TV episode from Bazarr data
+        
+        Searches for TV episode files using series title matching.
+        Currently finds the first video file in matching series directory.
+        
+        Args:
+            episode_data (dict): Episode data from Bazarr containing seriesTitle, 
+                               episodeTitle, episode_number, etc.
+            
+        Returns:
+            str: Full path to episode file if found, None otherwise
+            
+        TODO: Enhance to match exact episode using episode_number field
+        """
+        try:
+            # Try to get path from Bazarr data - episodes/wanted doesn't seem to include direct paths
+            # We'll need to use Sonarr IDs or search by series title
+            
+            # Get series information
+            series_title = episode_data.get('seriesTitle', '')
+            episode_number = episode_data.get('episode_number', '')  # Format like "1x49"
+            sonarr_series_id = episode_data.get('sonarrSeriesId')
+            sonarr_episode_id = episode_data.get('sonarrEpisodeId')
+            
+            if series_title:
+                series_base = "/Volumes/Data/TVShows"
+                if os.path.exists(series_base):
+                    # Search for series directory by title
+                    for series_dir in os.listdir(series_base):
+                        if series_title.lower() in series_dir.lower():
+                            series_path = os.path.join(series_base, series_dir)
+                            if os.path.isdir(series_path):
+                                # For now, just return the first video file found
+                                # TODO: Improve this to match exact episode using episode_number
+                                for root, dirs, files in os.walk(series_path):
+                                    for file in files:
+                                        if file.endswith(('.mp4', '.mkv', '.avi', '.mov')):
+                                            return os.path.join(root, file)
+            
+            return None
+            
+        except Exception as e:
+            print(f"   Error finding episode path: {e}")
+            return None
+    
+    def _process_wanted_item_translation(self, video_path: str, target_language: str) -> str:
+        """
+        Process a single wanted item for translation
+        
+        Checks if target language subtitles already exist, and if not,
+        attempts to create them via translation using SubtitleTranslator.
+        
+        Args:
+            video_path (str): Full path to video file
+            target_language (str): Target language code (e.g., "nl")
+            
+        Returns:
+            str: Path to subtitle file if successful (existing or newly created), 
+                 None if translation failed
+        """
+        try:
+            # Check if we already have the target language subtitles
+            video_dir = os.path.dirname(video_path)
+            video_name = os.path.splitext(os.path.basename(video_path))[0]
+            
+            # Look for existing target language subtitles
+            target_subtitle = os.path.join(video_dir, f"{video_name}.{target_language}.srt")
+            if os.path.exists(target_subtitle):
+                print(f"   ✅ Target language subtitles already exist")
+                return target_subtitle
+            
+            # Use subtitle translator to find and translate existing subtitles
+            if hasattr(self.path_mapper, 'subtitle_translator'):
+                translator = self.path_mapper.subtitle_translator
+                translated_path = translator.find_and_translate_subtitles(video_path, target_language)
+                
+                if translated_path:
+                    print(f"   🌍 Translated subtitles created: {os.path.basename(translated_path)}")
+                    return translated_path
+            
+            return None
+            
+        except Exception as e:
+            print(f"   Error during translation: {e}")
+            return None
+
     def batch_sync_all(self, language: str = "nl") -> Dict[str, int]:
         """Batch sync all media using PathMapper's enhanced bulk sync 🔥"""
         

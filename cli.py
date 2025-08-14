@@ -29,8 +29,13 @@ class SubtitleSyncCLI:
             
             while self.running:
                 self._show_main_menu()
-                choice = input("\n👉 Enter choice (1-9): ").strip()
-                self._handle_main_choice(choice)
+                try:
+                    choice = input("\n👉 Enter choice (1-9): ").strip()
+                    self._handle_main_choice(choice)
+                except EOFError:
+                    # Handle end of input stream gracefully
+                    print("\n\n👋 Input stream ended. Goodbye!")
+                    break
                 
         except KeyboardInterrupt:
             print("\n\n👋 Goodbye!")
@@ -80,12 +85,13 @@ class SubtitleSyncCLI:
         print("1. 🎬 Sync Movies from Bazarr")
         print("2. 📺 Sync TV Series from Bazarr")
         print("3. 🚀 Bulk Sync ALL Media")
-        print("4. 📊 Statistics & Reports")
-        print("5. ⚙️  Settings & Configuration")
-        print("6. 📦 Archive Management")
-        print("7. 🔧 System Tools")
-        print("8. ❓ Help & Status")
-        print("9. 🚪 Exit")
+        print("4. 🎯 Process Wanted Items (Auto-Translate)")
+        print("5. 📊 Statistics & Reports")
+        print("6. ⚙️  Settings & Configuration")
+        print("7. 📦 Archive Management")
+        print("8. 🔧 System Tools")
+        print("9. ❓ Help & Status")
+        print("0. 🚪 Exit")
         print("="*70)
     
     def _handle_main_choice(self, choice: str):
@@ -94,19 +100,20 @@ class SubtitleSyncCLI:
             "1": self._movies_menu,
             "2": self._series_menu,
             "3": self._bulk_sync_menu,
-            "4": self._statistics_menu,
-            "5": self._settings_menu,
-            "6": self._archive_menu,
-            "7": self._tools_menu,
-            "8": self._help_menu,
-            "9": self._exit
+            "4": self._wanted_items_menu,
+            "5": self._statistics_menu,
+            "6": self._settings_menu,
+            "7": self._archive_menu,
+            "8": self._tools_menu,
+            "9": self._help_menu,
+            "0": self._exit
         }
         
         handler = handlers.get(choice)
         if handler:
             handler()
         else:
-            print("❌ Invalid choice. Please enter 1-9.")
+            print("❌ Invalid choice. Please enter 0-9.")
     
     # =============================================================================
     # SYNC MENUS
@@ -223,6 +230,203 @@ class SubtitleSyncCLI:
         else:
             print("❌ Invalid choice")
     
+    def _wanted_items_menu(self):
+        """
+        Wanted items processing menu with automatic translation
+        
+        This menu provides access to the intelligent subtitle generation system
+        that leverages Bazarr's "wanted" API to target only items missing subtitles.
+        
+        Features:
+        - Displays preview of all items needing subtitles
+        - Shows sample movies and TV episodes before processing  
+        - Provides options for targeted processing (all, movies only, TV only)
+        - Automatic translation from existing subtitles in other languages
+        - Real-time progress feedback during processing
+        
+        Prerequisites:
+        - PathMapper must be available
+        - Auto-translation must be enabled in configuration
+        - Bazarr integration must be functional
+        """
+        print("\n🎯 WANTED ITEMS PROCESSING MENU")
+        print("=" * 50)
+        print("This feature processes items from Bazarr's 'wanted' list")
+        print("and automatically generates Dutch subtitles via translation.")
+        print()
+        
+        # Check if translation is enabled
+        if not sync_engine.use_pathmapper or not sync_engine.path_mapper:
+            print("❌ PathMapper not available")
+            return
+        
+        if not sync_engine.path_mapper.config or not sync_engine.path_mapper.config.get('auto_translation', False):
+            print("❌ Auto-translation is disabled")
+            print("   Enable it in Settings & Configuration menu")
+            return
+        
+        # Get wanted items preview
+        try:
+            if hasattr(sync_engine.path_mapper, 'bazarr_client') and sync_engine.path_mapper.bazarr_client:
+                wanted_data = sync_engine.path_mapper.bazarr_client.get_all_wanted_items()
+                
+                if wanted_data['total'] == 0:
+                    print("🎉 No items need subtitles - everything is up to date!")
+                    return
+                
+                print(f"📊 Found {wanted_data['total']} items needing subtitles:")
+                print(f"   Movies: {len(wanted_data['movies'])}")
+                print(f"   TV Episodes: {len(wanted_data['series'])}")
+                print()
+                
+                # Show sample items
+                if wanted_data['movies']:
+                    print("📽️ Sample movies needing subtitles:")
+                    for i, movie in enumerate(wanted_data['movies'][:3]):
+                        print(f"   {i+1}. {movie.get('title', 'Unknown Title')}")
+                    if len(wanted_data['movies']) > 3:
+                        print(f"   ... and {len(wanted_data['movies']) - 3} more")
+                
+                if wanted_data['series']:
+                    print("\n📺 Sample TV episodes needing subtitles:")
+                    for i, episode in enumerate(wanted_data['series'][:3]):
+                        series_title = episode.get('seriesTitle', 'Unknown Series')
+                        episode_title = episode.get('episodeTitle', 'Unknown Episode')
+                        episode_number = episode.get('episode_number', '?x?')
+                        print(f"   {i+1}. {series_title} {episode_number} - {episode_title}")
+                    if len(wanted_data['series']) > 3:
+                        print(f"   ... and {len(wanted_data['series']) - 3} more")
+                
+                print("\nProcessing options:")
+                print("1. Process ALL wanted items (auto-translate)")
+                print("2. Process movies only")
+                print("3. Process TV episodes only")
+                print("4. Preview wanted items (no processing)")
+                print("5. Back to main menu")
+                
+                try:
+                    choice = input("\nChoice (1-5): ").strip()
+                except EOFError:
+                    print("\n👋 Input stream ended")
+                    return
+                
+                if choice == "1":
+                    self._process_all_wanted_items()
+                elif choice == "2":
+                    self._process_wanted_movies_only(wanted_data['movies'])
+                elif choice == "3":
+                    self._process_wanted_series_only(wanted_data['series'])
+                elif choice == "4":
+                    self._preview_wanted_items(wanted_data)
+                elif choice == "5":
+                    return
+                else:
+                    print("❌ Invalid choice")
+            else:
+                print("❌ Bazarr integration not available")
+                
+        except Exception as e:
+            print(f"❌ Error accessing wanted items: {e}")
+    
+    def _process_all_wanted_items(self):
+        """
+        Process all wanted items (movies + TV episodes) with automatic translation
+        
+        Executes the complete wanted items workflow:
+        1. Confirms user intent before processing
+        2. Calls sync_engine.process_wanted_items_with_translation()
+        3. Displays comprehensive results including translation counts
+        4. Provides success feedback for newly created subtitle files
+        """
+        """Process all wanted items with translation"""
+        print(f"\n🎯 PROCESSING ALL WANTED ITEMS")
+        print("=" * 50)
+        print("This will attempt to generate Dutch subtitles for all items")
+        print("that Bazarr has marked as 'wanted' (missing subtitles).")
+        print()
+        
+        if input("Continue with processing? (y/N): ").lower() != 'y':
+            return
+        
+        results = sync_engine.process_wanted_items_with_translation()
+        self._show_sync_results(results)
+        
+        if results.get('translated', 0) > 0:
+            print(f"\n🎉 Successfully created {results['translated']} Dutch subtitle files!")
+            print("   These subtitles were generated by translating existing English/other language subtitles.")
+    
+    def _process_wanted_movies_only(self, movies: list):
+        """Process wanted movies only"""
+        if not movies:
+            print("❌ No movies need subtitles")
+            return
+        
+        print(f"\n🎬 PROCESSING {len(movies)} WANTED MOVIES")
+        print("=" * 50)
+        
+        if input("Continue? (y/N): ").lower() != 'y':
+            return
+        
+        # This would need to be implemented in sync_engine if we want movie-only processing
+        print("⚠️ Movie-only processing not yet implemented")
+        print("   Use 'Process ALL wanted items' for now")
+    
+    def _process_wanted_series_only(self, series: list):
+        """Process wanted TV episodes only"""
+        if not series:
+            print("❌ No TV episodes need subtitles")
+            return
+        
+        print(f"\n📺 PROCESSING {len(series)} WANTED TV EPISODES")
+        print("=" * 50)
+        
+        if input("Continue? (y/N): ").lower() != 'y':
+            return
+        
+        # This would need to be implemented in sync_engine if we want series-only processing
+        print("⚠️ TV-only processing not yet implemented")
+        print("   Use 'Process ALL wanted items' for now")
+    
+    def _preview_wanted_items(self, wanted_data: dict):
+        """
+        Preview all wanted items without processing
+        
+        Displays a comprehensive list of items needing subtitles for user review.
+        Shows up to 10 movies and 10 TV episodes with formatted titles and
+        episode information. Useful for understanding scope before processing.
+        
+        Args:
+            wanted_data (dict): Wanted items data from Bazarr containing
+                              'movies' and 'series' lists
+        """
+        print(f"\n👀 PREVIEW: WANTED ITEMS")
+        print("=" * 50)
+        
+        if wanted_data['movies']:
+            print(f"\n🎬 Movies needing subtitles ({len(wanted_data['movies'])}):")
+            for i, movie in enumerate(wanted_data['movies'][:10]):
+                title = movie.get('title', 'Unknown Title')
+                year = movie.get('year', 'Unknown')
+                print(f"   {i+1:2d}. {title} ({year})")
+            if len(wanted_data['movies']) > 10:
+                print(f"   ... and {len(wanted_data['movies']) - 10} more movies")
+        
+        if wanted_data['series']:
+            print(f"\n📺 TV Episodes needing subtitles ({len(wanted_data['series'])}):")
+            for i, episode in enumerate(wanted_data['series'][:10]):
+                series_title = episode.get('seriesTitle', 'Unknown Series')
+                episode_title = episode.get('episodeTitle', 'Unknown Episode')
+                episode_number = episode.get('episode_number', '?x?')
+                # Parse season and episode from episode_number (format like "1x49")
+                season_ep = episode_number.replace('x', 'E')
+                if 'x' in episode_number:
+                    season_ep = f"S{episode_number.replace('x', 'E')}"
+                print(f"   {i+1:2d}. {series_title} {season_ep} - {episode_title}")
+            if len(wanted_data['series']) > 10:
+                print(f"   ... and {len(wanted_data['series']) - 10} more episodes")
+        
+        input("\nPress Enter to continue...")
+
     # =============================================================================
     # SYNC IMPLEMENTATIONS
     # =============================================================================
@@ -1428,10 +1632,15 @@ class SubtitleSyncCLI:
         print(f"\n🎉 SYNC RESULTS")
         print("=" * 40)
         print(f"✅ Successful: {results['successful']}")
+        
+        # Show translation results if available
+        if 'translated' in results and results['translated'] > 0:
+            print(f"🌍 Translated: {results['translated']}")
+        
         print(f"⭐ Skipped: {results['skipped']}")
         print(f"❌ Failed: {results['failed']}")
         
-        total = sum(results.values())
+        total = sum(v for k, v in results.items() if k != 'translated')
         if total > 0:
             success_rate = (results['successful'] / total) * 100
             print(f"📊 Success rate: {success_rate:.1f}%")

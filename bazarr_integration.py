@@ -252,3 +252,108 @@ class BazarrIntegration:
         except Exception as e:
             print(f"   Error fetching episodes: {e}")
             return []
+    
+    def get_wanted_movies(self):
+        """
+        Get movies that need subtitles from Bazarr's wanted list
+        
+        Uses Bazarr's /api/movies/wanted endpoint to fetch movies that are missing
+        subtitles in the configured languages.
+        
+        Returns:
+            list: List of movie dictionaries containing title, path, and metadata
+                  Returns empty list if no movies need subtitles or on error
+        """
+        try:
+            url = self.credential_manager.bazarr_url
+            api_key = self.credential_manager.bazarr_api_key
+            
+            if not url or not api_key:
+                print("⚠️ Bazarr credentials not configured")
+                return []
+            
+            headers = {'X-API-KEY': api_key}
+            print("🔍 Fetching wanted movies from Bazarr...")
+            
+            response = requests.get(f"{url}/api/movies/wanted", headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                wanted_items = data if isinstance(data, list) else data.get('data', [])
+                print(f"   Found {len(wanted_items)} movies needing subtitles")
+                return wanted_items
+            else:
+                print(f"   ❌ Failed to fetch wanted movies: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"   ❌ Error fetching wanted movies: {e}")
+            return []
+    
+    def get_wanted_series(self):
+        """
+        Get TV series episodes that need subtitles from Bazarr's wanted list
+        
+        Uses Bazarr's /api/episodes/wanted endpoint to fetch TV episodes that are 
+        missing subtitles in the configured languages.
+        
+        Returns:
+            list: List of episode dictionaries containing seriesTitle, episodeTitle,
+                  episode_number, and metadata. Returns empty list if no episodes 
+                  need subtitles or on error
+        """
+        try:
+            url = self.credential_manager.bazarr_url
+            api_key = self.credential_manager.bazarr_api_key
+            
+            if not url or not api_key:
+                print("⚠️ Bazarr credentials not configured")
+                return []
+            
+            headers = {'X-API-KEY': api_key}
+            print("🔍 Fetching wanted TV episodes from Bazarr...")
+            
+            # Use the correct endpoint for wanted episodes
+            response = requests.get(f"{url}/api/episodes/wanted", headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                wanted_items = data.get('data', []) if isinstance(data, dict) else data
+                print(f"   Found {len(wanted_items)} TV episodes needing subtitles")
+                return wanted_items
+            else:
+                print(f"   ❌ Failed to fetch wanted series: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"   ❌ Error fetching wanted series: {e}")
+            return []
+    
+    def get_all_wanted_items(self):
+        """
+        Get all items (movies + TV episodes) that need subtitles
+        
+        Combines results from both get_wanted_movies() and get_wanted_series()
+        to provide a comprehensive list of all media needing subtitles.
+        
+        Returns:
+            dict: Dictionary containing:
+                - 'movies': List of movies needing subtitles
+                - 'series': List of TV episodes needing subtitles  
+                - 'total': Total count of items needing subtitles
+        """
+        print("🎯 Fetching all items needing subtitles...")
+        
+        wanted_movies = self.get_wanted_movies()
+        wanted_series = self.get_wanted_series()
+        
+        total_wanted = len(wanted_movies) + len(wanted_series)
+        print(f"📊 Total items needing subtitles: {total_wanted}")
+        print(f"   Movies: {len(wanted_movies)}")
+        print(f"   TV Episodes: {len(wanted_series)}")
+        
+        return {
+            'movies': wanted_movies,
+            'series': wanted_series,
+            'total': total_wanted
+        }

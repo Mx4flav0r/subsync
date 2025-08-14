@@ -11,6 +11,9 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
+# Import subtitle translator
+from subtitle_translator import SubtitleTranslator
+
 def get_logger(name):
     """Simple logger fallback"""
     import logging
@@ -18,23 +21,40 @@ def get_logger(name):
     return logging.getLogger(name)
 
 class PathMapper:
-    def __init__(self, bazarr_client):
+    def __init__(self, bazarr_client, config=None):
         self.bazarr_client = bazarr_client
         self.logger = get_logger('PathMapper')
+        self.config = config
+        
+        # Initialize subtitle translator if enabled
+        auto_translation = True  # Default enabled
+        if config:
+            auto_translation = config.get('auto_translation', True)
+        
+        if auto_translation:
+            self.translator = SubtitleTranslator(config)
+        else:
+            self.translator = None
         
         # Path mapping rules
         self.path_mappings = {
             # Bazarr server paths -> Local Mac paths
             "/PlexMedia/Movies": "/Volumes/Data/Movies",
             "/PlexMedia/TVShows": "/Volumes/Data/TVShows",
-            "/PlexMedia/Cartoons": "/Volumes/Data/Movies",  # If you have cartoons
+            "/PlexMedia/Cartoons": "/Volumes/Data/Cartoons",
+            "/PlexMedia/Documentaries": "/Volumes/Data/Documentaries", 
+            "/PlexMedia/Christmas": "/Volumes/Data/Christmas",
+            "/PlexMedia/Dive": "/Volumes/Data/Dive",
         }
         
-        # Alternative local search paths
+        # Alternative local search paths for movie content
         self.local_search_paths = [
             "/Volumes/Data/Movies",
             "/Volumes/Data/TVShows",
+            "/Volumes/Data/Cartoons",
+            "/Volumes/Data/Documentaries",
             "/Volumes/Data/Christmas",
+            "/Volumes/Data/Dive",
             "/Volumes/Data",
         ]
         
@@ -332,10 +352,13 @@ class PathMapper:
             print(f"   ⏱️ Timeout: {timeout} seconds")
             
             start_time = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            
+            # Run ffsubsync with real-time progress tracking
+            result = self._run_ffsubsync_with_progress(cmd, timeout)
+            
             processing_time = time.time() - start_time
             
-            print(f"   ⏱️ Processing completed in {processing_time:.1f} seconds")
+            print(f"\n   ⏱️ Processing completed in {processing_time:.1f} seconds")
             print(f"   📟 Return code: {result.returncode}")
             
             if result.returncode == 0:
@@ -453,10 +476,10 @@ class PathMapper:
         
         try:
             start_time = time.time()
-            result = subprocess.run(cmd_alt, capture_output=True, text=True, timeout=300)
+            result = self._run_ffsubsync_with_progress(cmd_alt, 300)
             processing_time = time.time() - start_time
             
-            print(f"   ⏱️ Alternative VAD completed in {processing_time:.1f} seconds")
+            print(f"\n   ⏱️ Alternative VAD completed in {processing_time:.1f} seconds")
             print(f"   📟 Return code: {result.returncode}")
             
             if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -520,10 +543,10 @@ class PathMapper:
         
         try:
             start_time = time.time()
-            result = subprocess.run(cmd_minimal, capture_output=True, text=True, timeout=200)
+            result = self._run_ffsubsync_with_progress(cmd_minimal, 200)
             processing_time = time.time() - start_time
             
-            print(f"   ⏱️ Minimal command completed in {processing_time:.1f} seconds")
+            print(f"\n   ⏱️ Minimal command completed in {processing_time:.1f} seconds")
             print(f"   📟 Return code: {result.returncode}")
             
             if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -718,6 +741,13 @@ class PathMapper:
                 print(f"   ✅ Sync completed successfully!")
                 status = f"success_time_{sync_time:.1f}s"
                 
+                # Clean up any temporary extracted files
+                try:
+                    if self.translator and self.config and self.config.get('cleanup_extracted_subtitles', True):
+                        self.translator.cleanup_extracted_files(local_video_path)
+                except Exception as e:
+                    print(f"   ⚠️ Cleanup warning: {e}")
+                
                 # Record sync in database
                 self._record_sync_result(
                     video_path=local_video_path,
@@ -843,11 +873,14 @@ class PathMapper:
         return bazarr_base == local_base or bazarr_base in local_base or local_base in bazarr_base
 
     def _find_subtitle_file(self, video_path, language):
-        """Find subtitle file for the video"""
+        """Find subtitle file for the video, with translation fallback"""
         video_dir = os.path.dirname(video_path)
         video_base = os.path.splitext(os.path.basename(video_path))[0]
         
-        # Common subtitle patterns
+        # Step 1: Look for existing subtitles in target language
+        print(f"🔍 Looking for {language} subtitles...")
+        
+        # Common subtitle patterns for target language
         patterns = [
             f"{video_base}.{language}.srt",
             f"{video_base}.{language}.sub",
@@ -858,7 +891,31 @@ class PathMapper:
         for pattern in patterns:
             subtitle_path = os.path.join(video_dir, pattern)
             if os.path.exists(subtitle_path):
+                print(f"   ✅ Found existing subtitle: {os.path.basename(subtitle_path)}")
                 return subtitle_path
+        
+        # Step 2: Translation fallback - only if enabled and translator available
+        print(f"   ❌ No {language} subtitles found")
+        
+        if not self.translator:
+            print(f"   ⚠️ Auto-translation disabled")
+            return None
+        
+        print(f"🌐 Attempting automatic translation...")
+        
+        try:
+            target_lang = language
+            if self.config:
+                target_lang = self.config.get('translation_target_language', language)
+            
+            translated_subtitle = self.translator.find_and_translate_subtitles(video_path, target_lang)
+            if translated_subtitle:
+                print(f"   ✅ Generated translated subtitle: {os.path.basename(translated_subtitle)}")
+                return translated_subtitle
+            else:
+                print(f"   ❌ Translation failed - no suitable source subtitles found")
+        except Exception as e:
+            print(f"   ❌ Translation error: {e}")
         
         return None
 
@@ -883,15 +940,10 @@ class PathMapper:
         start_time = time.time()
         
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
+            result = self._run_ffsubsync_with_progress(cmd, 300)
             
             processing_time = time.time() - start_time
-            print(f"   ⏱️ Processing completed in {processing_time:.1f} seconds")
+            print(f"\n   ⏱️ Processing completed in {processing_time:.1f} seconds")
             print(f"   📟 Return code: {result.returncode}")
             
             if result.returncode == 0 and os.path.exists(output_path):
@@ -923,15 +975,13 @@ class PathMapper:
         start_time = time.time()
         
         try:
-            result = subprocess.run(
+            result = self._run_ffsubsync_with_progress(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=600  # Longer timeout for alt VAD
+                600  # Longer timeout for alt VAD
             )
             
             processing_time = time.time() - start_time
-            print(f"   ⏱️ Alternative VAD completed in {processing_time:.1f} seconds")
+            print(f"\n   ⏱️ Alternative VAD completed in {processing_time:.1f} seconds")
             print(f"   📟 Return code: {result.returncode}")
             
             if result.returncode == 0 and os.path.exists(output_path):
@@ -941,6 +991,130 @@ class PathMapper:
                 
         except Exception as e:
             return False, 0
+
+    def _run_ffsubsync_with_progress(self, cmd, timeout):
+        """Run ffsubsync command with real-time progress tracking"""
+        import subprocess
+        import threading
+        import re
+        import sys
+        
+        try:
+            # Start the process
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
+            )
+            
+            # Progress tracking variables
+            progress_data = {
+                'current': 0.0,
+                'total': 0.0,
+                'stage': 'Starting...',
+                'last_line': ''
+            }
+            
+            def update_progress():
+                """Update progress bar display"""
+                current = progress_data['current']
+                total = progress_data['total']
+                stage = progress_data['stage']
+                
+                if total > 0:
+                    percentage = min(100, (current / total) * 100)
+                    # Create progress bar
+                    bar_length = 30
+                    filled_length = int(bar_length * percentage / 100)
+                    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+                    
+                    # Print progress (with carriage return to overwrite)
+                    print(f"\r   📊 Progress: [{bar}] {percentage:.1f}% - {stage}", end='', flush=True)
+                else:
+                    print(f"\r   📊 {stage}", end='', flush=True)
+            
+            # Read output line by line
+            output_lines = []
+            
+            try:
+                for line in process.stdout:
+                    output_lines.append(line)
+                    line = line.strip()
+                    
+                    if line:
+                        progress_data['last_line'] = line
+                        
+                        # Parse ffsubsync output for progress information
+                        # Look for patterns like: "3%|▎ | 100.0/2929.302 [00:01<00:31, 88.95it/s]"
+                        if '|' in line and ('/[' in line or '/sec' in line):
+                            try:
+                                # Extract current/total from pattern like "100.0/2929.302"
+                                match = re.search(r'(\d+\.?\d*)/(\d+\.?\d*)', line)
+                                if match:
+                                    progress_data['current'] = float(match.group(1))
+                                    progress_data['total'] = float(match.group(2))
+                                    progress_data['stage'] = 'Processing audio...'
+                                    update_progress()
+                                
+                                # Also look for percentage at start of line
+                                percentage_match = re.search(r'^(\d+)%', line)
+                                if percentage_match:
+                                    percentage = float(percentage_match.group(1))
+                                    progress_data['current'] = percentage
+                                    progress_data['total'] = 100
+                                    progress_data['stage'] = 'Processing audio...'
+                                    update_progress()
+                            except (ValueError, AttributeError):
+                                pass
+                        
+                        # Look for other status messages
+                        elif 'extracting speech segments' in line.lower():
+                            progress_data['stage'] = 'Extracting speech segments...'
+                            update_progress()
+                        elif 'aligning' in line.lower():
+                            progress_data['stage'] = 'Aligning subtitles...'
+                            update_progress()
+                        elif 'writing' in line.lower():
+                            progress_data['stage'] = 'Writing output...'
+                            update_progress()
+                        elif 'info' in line.lower() and 'extracting' in line.lower():
+                            progress_data['stage'] = 'Extracting speech...'
+                            update_progress()
+                        elif 'computing' in line.lower():
+                            progress_data['stage'] = 'Computing alignment...'
+                            update_progress()
+                
+                # Wait for process to complete
+                process.wait(timeout=timeout)
+                
+            except subprocess.TimeoutExpired:
+                process.kill()
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            
+            # Final progress update
+            if progress_data['total'] > 0:
+                progress_data['current'] = progress_data['total']
+                progress_data['stage'] = 'Complete!'
+                update_progress()
+            
+            print()  # New line after progress bar
+            
+            # Create a result object similar to subprocess.run
+            class ProcessResult:
+                def __init__(self, returncode, stdout):
+                    self.returncode = returncode
+                    self.stdout = stdout
+                    self.stderr = ''
+            
+            return ProcessResult(process.returncode, ''.join(output_lines))
+            
+        except Exception as e:
+            print(f"\n   ❌ Error during progress tracking: {e}")
+            # Fallback to regular subprocess.run
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def _record_sync_result(self, video_path, subtitle_path, output_path, language, success, processing_time, method):
         """Record sync result in database"""

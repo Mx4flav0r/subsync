@@ -4,6 +4,7 @@ A powerful, intelligent subtitle synchronization system that automatically syncs
 
 ## ✨ Features
 
+### 🎯 Core Subtitle Sync Features
 - **🎯 Advanced Sync Engine**: Powered by ffsubsync with multiple VAD (Voice Activity Detection) methods
 - **🌐 Bazarr Integration**: Automatic discovery and sync of movies and TV series from your Bazarr instance
 - **🎬 Plex Integration**: Automatically sets synced subtitles as default in your Plex server
@@ -13,6 +14,15 @@ A powerful, intelligent subtitle synchronization system that automatically syncs
 - **📊 Statistics & Tracking**: Comprehensive sync history and performance metrics
 - **⚡ Parallel Processing**: Bulk operations with configurable worker threads
 - **🎨 Beautiful CLI**: Intuitive menu-driven interface with colored output
+
+### 🌟 NEW! Intelligent Subtitle Translation System
+- **🎯 Wanted Items Integration**: Leverages Bazarr's "wanted" API to target only items missing subtitles
+- **🌐 Automatic Translation**: Generates Dutch subtitles by translating existing English/Spanish/French/German subtitles
+- **🔧 Multiple Translation APIs**: Free services (LibreTranslate, MyMemory) with automatic fallback
+- **📽️ Embedded Subtitle Support**: Extracts and translates subtitles embedded in video files
+- **⚡ Intelligent Processing**: Only processes items that actually need subtitles (no wasted effort)
+- **📊 Progress Tracking**: Real-time progress bars for all translation operations
+- **🗂️ Multiple Movie Libraries**: Full support for Movies, Cartoons, Documentaries, Christmas, and custom folders
 
 ## 🎯 What This System Does
 
@@ -149,7 +159,31 @@ Configure how local file paths map to Plex paths for different environments:
 - **When to use**: For initial setup or when you want to sync your entire library
 - **⚠️ Warning**: Can take several hours for large libraries
 
-#### 4. 📊 Statistics & Reports
+#### 4. 🎯 Process Wanted Items (Auto-Translate) ⭐ NEW!
+- **Purpose**: Intelligently target only items that need subtitles and generate them automatically
+- **Key Benefits**:
+  - **🔍 Smart Discovery**: Uses Bazarr's "wanted" API to find only items missing subtitles
+  - **🌐 Auto-Translation**: Automatically translates existing subtitles when Dutch versions aren't available
+  - **⚡ Efficient Processing**: Only processes items that actually need subtitles (no wasted effort)
+  - **📊 Precise Targeting**: Shows exactly which movies/episodes need subtitles before processing
+- **Process**:
+  1. Queries Bazarr's wanted items API (/api/movies/wanted, /api/episodes/wanted)
+  2. Displays preview of all items needing subtitles
+  3. For each item, attempts to find existing subtitles in other languages
+  4. Translates English/Spanish/French/German subtitles to Dutch using free APIs
+  5. Creates properly formatted Dutch subtitle files
+- **Translation Features**:
+  - **Multiple API Support**: LibreTranslate, MyMemory (with Google Translate fallback)
+  - **Embedded Subtitle Extraction**: Can extract and translate subtitles embedded in video files
+  - **Language Priority**: Prefers English sources for best translation quality
+  - **Automatic Cleanup**: Removes temporary files after processing
+- **When to use**: 
+  - ✅ **Regular maintenance**: Process items as they get added to your library
+  - ✅ **When Dutch subtitles are missing**: Generate them automatically from existing sources
+  - ✅ **Efficient workflow**: Focus only on items that actually need attention
+- **Success Rate**: Depends on availability of source language subtitles (typically 70-90% for movies with English subtitles)
+
+#### 5. 📊 Statistics & Reports
 - **Purpose**: View sync performance and history
 - **Information shown**:
   - Total sync operations performed
@@ -159,7 +193,7 @@ Configure how local file paths map to Plex paths for different environments:
   - Archive statistics
 - **When to use**: To monitor system performance and track sync history
 
-#### 5. ⚙️ Settings & Configuration
+#### 6. ⚙️ Settings & Configuration
 Comprehensive configuration management:
 
 ##### 5.1 Configure Bazarr credentials
@@ -203,7 +237,7 @@ Comprehensive configuration management:
 - Restore all settings to factory defaults
 - ⚠️ Use with caution - will erase all custom configurations
 
-#### 6. 📦 Archive Management
+#### 7. 📦 Archive Management
 Intelligent file management system:
 
 ##### 6.1 Show archive statistics
@@ -222,7 +256,7 @@ Intelligent file management system:
 - Remove old archived files to free up space
 - Configurable age thresholds
 
-#### 7. 🔧 System Tools
+#### 8. 🔧 System Tools
 Advanced system utilities:
 
 ##### 7.1 Database maintenance
@@ -237,7 +271,7 @@ Advanced system utilities:
 - Test accessibility of all configured paths
 - Network connectivity testing
 
-#### 8. ❓ Help & Status
+#### 9. ❓ Help & Status
 - System status overview
 - Version information
 - Quick help and troubleshooting tips

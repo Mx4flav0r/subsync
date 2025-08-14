@@ -29,15 +29,28 @@ class Config:
             "sync_timeout": 300,
             "vad_method": "webrtcvad",
             
+            # Translation Settings
+            "auto_translation": True,
+            "translation_target_language": "nl",
+            "translation_source_priority": ["en", "es", "fr", "de"],
+            "cleanup_extracted_subtitles": True,
+            
             # Path Settings
             "base_paths": [
                 "/Volumes/Data/Movies",
                 "/Volumes/Data/TVShows", 
-                "/Volumes/Data/Christmas"
+                "/Volumes/Data/Cartoons",
+                "/Volumes/Data/Documentaries",
+                "/Volumes/Data/Christmas",
+                "/Volumes/Data/Dive"
             ],
             "path_mappings": {
                 "/PlexMedia/Movies": "/Volumes/Data/Movies",
-                "/PlexMedia/TVShows": "/Volumes/Data/TVShows"
+                "/PlexMedia/TVShows": "/Volumes/Data/TVShows",
+                "/PlexMedia/Cartoons": "/Volumes/Data/Cartoons",
+                "/PlexMedia/Documentaries": "/Volumes/Data/Documentaries",
+                "/PlexMedia/Christmas": "/Volumes/Data/Christmas",
+                "/PlexMedia/Dive": "/Volumes/Data/Dive"
             },
             
             # Environment-specific Path Settings
@@ -46,9 +59,17 @@ class Config:
                 "mac_local": {
                     "movies_local": "/Volumes/Data/Movies",
                     "movies_plex": "/PlexMedia/Movies",
+                    "cartoons_local": "/Volumes/Data/Cartoons",
+                    "cartoons_plex": "/PlexMedia/Cartoons",
+                    "documentaries_local": "/Volumes/Data/Documentaries",
+                    "documentaries_plex": "/PlexMedia/Documentaries",
+                    "christmas_local": "/Volumes/Data/Christmas",
+                    "christmas_plex": "/PlexMedia/Christmas",
+                    "dive_local": "/Volumes/Data/Dive",
+                    "dive_plex": "/PlexMedia/Dive",
                     "series_local": "/Volumes/Data/TVShows",
                     "series_plex": "/PlexMedia/TVShows",
-                    "description": "Mac M1 Local Environment"
+                    "description": "Mac M1 Local Environment with All Movie Libraries"
                 },
                 "windows_remote": {
                     "movies_local": "\\\\192.168.90.2\\Movies",

@@ -19,9 +19,15 @@ def get_current_environment_paths():
     return {
         "movies_local": "/Volumes/Data/Movies",
         "movies_plex": "/PlexMedia/Movies",
+        "cartoons_local": "/Volumes/Data/Cartoons",
+        "cartoons_plex": "/PlexMedia/Cartoons",
+        "documentaries_local": "/Volumes/Data/Documentaries",
+        "documentaries_plex": "/PlexMedia/Documentaries",
+        "christmas_local": "/Volumes/Data/Christmas",
+        "christmas_plex": "/PlexMedia/Christmas",
         "series_local": "/Volumes/Data/TVShows", 
         "series_plex": "/PlexMedia/TVShows",
-        "description": "Fallback configuration"
+        "description": "Fallback configuration with multiple movie libraries"
     }
 
 def convert_local_path_to_plex_path(local_path):
