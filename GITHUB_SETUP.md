@@ -29,16 +29,16 @@ git config --global user.email "your.email@example.com"
 ### 2. Create GitHub Repository
 1. Go to [GitHub.com](https://github.com) and sign in
 2. Click the **"+"** icon → **"New repository"**
-3. Repository name: `subtitle-sync-system` (or your choice)
-4. Description: `Enhanced Subtitle Sync System with Bazarr/Plex Integration`
+3. Repository name: `subsync`
+4. Description: `Enhanced Subtitle Sync System with Bazarr/Plex Integration and Automatic Translation`
 5. Set to **Public** (recommended for open source)
 6. **DO NOT** initialize with README (we already have one)
 7. Click **"Create repository"**
 
 ### 3. Connect Local Repository to GitHub
 ```bash
-# Add GitHub remote (replace USERNAME and REPO_NAME)
-git remote add origin https://github.com/USERNAME/REPO_NAME.git
+# Your repository is already configured! 
+# Remote URL: https://github.com/Mx4flav0r/subsync.git
 
 # Push your code to GitHub
 git push -u origin main
